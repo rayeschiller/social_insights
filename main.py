@@ -118,7 +118,7 @@ def generate_filename(csv=False):
 
 def main():
     print("Fetching media data")
-    media_items = fetch_media_data(ACCESS_TOKEN, USER_ID, paginate=False)
+    media_items = fetch_media_data(ACCESS_TOKEN, USER_ID, paginate=True)
     print(f"Fetched {len(media_items)} media items")
 
     print(f"Aggregating data.")
@@ -127,9 +127,8 @@ def main():
 
     print(f"Writing to spreadsheet")
     file_path = generate_filename()
-    file_path_no_images = generate_filename(csv=False).replace(".xlsx", "_no_images.xlsx")
 
-    write_to_excel(aggregated_data, file_path_no_images, include_images=True)
+    write_to_excel(aggregated_data, file_path, include_images=True)
     print(f"Successfully wrote to spreadsheet at {file_path}")
 
 
