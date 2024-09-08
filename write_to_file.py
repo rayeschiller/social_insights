@@ -1,5 +1,6 @@
 import csv
 from io import BytesIO
+from openpyxl.styles import numbers
 
 import requests
 from PIL import Image as PILImage
@@ -35,6 +36,11 @@ def write_to_excel(aggregated_data, file_path, include_images=True):
                 pass
         adjusted_width = max_length + 2
         ws.column_dimensions[column].width = adjusted_width
+
+    pct_columns = ["Like PCT", "Comment PCT", "Share PCT", "Save PCT"]
+    for col_idx, pct_key in enumerate(pct_columns, start=(len(METRICS) - 4 + (1 if include_images else 0))):
+        cell = ws.cell(row=ws.max_row, column=col_idx + 1)
+        cell.number_format = numbers.FORMAT_PERCENTAGE_00
 
     # Customize column widths as per your needs
     if include_images:

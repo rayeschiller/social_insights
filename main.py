@@ -1,3 +1,4 @@
+import argparse
 import os
 import requests
 import re
@@ -12,7 +13,7 @@ def fetch_media_data(access_token, user_id, paginate=True):
     """
     media_url = f"https://graph.facebook.com/v20.0/{user_id}/media"
     media_params = {
-        'fields': 'caption,owner,media_type,timestamp,media_url,thumbnail_url',
+        'fields': 'caption,owner,media_type,timestamp,media_url,thumbnail_url,video_duration',
         'access_token': access_token,
         'limit': 25  # Set a limit for each page; 25 is the default
     }
@@ -106,7 +107,7 @@ def calculate_pct_values(entry):
     }
 
     for pct_key, metric_key in pct_metrics.items():
-        entry[pct_key] = f"{(entry[metric_key] or 0) / total_plays * 100:.2f}%"
+        entry[pct_key] = (entry[metric_key] or 0) / total_plays
 
 
 def generate_filename(csv=False):
@@ -121,14 +122,39 @@ def main():
     media_items = fetch_media_data(ACCESS_TOKEN, USER_ID, paginate=True)
     print(f"Fetched {len(media_items)} media items")
 
-    print(f"Aggregating data.")
+    print("Aggregating data")
     aggregated_data = aggregate_media_data(media_items)
     print(f"Aggregated {len(aggregated_data)} items")
 
-    print(f"Writing to spreadsheet")
+    print("Writing to spreadsheet")
     file_path = generate_filename()
 
     write_to_excel(aggregated_data, file_path, include_images=True)
+    print(f"Successfully wrote to spreadsheet at {file_path}")
+
+
+def main_args():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Fetch Instagram media insights")
+    parser.add_argument("--access_token", type=str, required=True, help="Instagram Graph API access token")
+    parser.add_argument("--paginate", action="store_true", help="Paginate through all media items")
+    parser.add_argument("--no_images", action="store_true", help="Exclude images in the Excel file")
+
+    args = parser.parse_args()
+
+    print("Fetching media data")
+    paginate = args.paginate
+    media_items = fetch_media_data(args.access_token, USER_ID)
+    print(f"Fetched {len(media_items)} media items")
+
+    print("Aggregating data")
+    aggregated_data = aggregate_media_data(media_items)
+    print(f"Aggregated {len(aggregated_data)} items")
+
+    print("Writing to spreadsheet")
+    file_path = generate_filename()
+    include_images = not args.no_images  # Include images unless --no_images is passed
+    write_to_excel(aggregated_data, file_path, include_images=include_images)
     print(f"Successfully wrote to spreadsheet at {file_path}")
 
 
