@@ -1,3 +1,11 @@
+"""
+Not currently used or functioning
+Get auth from Meta explorer page and copy/paste to a variable in secrets.py
+Or pass through as command line arg
+"""
+
+from flask import Flask
+
 app = Flask(__name__)
 
 @app.route('/')
