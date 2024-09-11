@@ -1,162 +1,49 @@
 import argparse
-import os
-import requests
-import re
-import datetime
+
+from follower_insights import fetch_follower_demographics, write_demographics_to_csv
+from reel_insights import fetch_media_data, aggregate_media_data, generate_filename
 from secrets import ACCESS_TOKEN, USER_ID
-from settings import METRICS
 from write_to_file import write_to_excel
 
 
-def fetch_media_data(access_token, user_id, paginate=True):
-    """Fetch media data for an Instagram Business or Creator account.
-    """
-    media_url = f"https://graph.facebook.com/v20.0/{user_id}/media"
-    media_params = {
-        'fields': 'caption,owner,media_type,timestamp,media_url,thumbnail_url,video_duration',
-        'access_token': access_token,
-        'limit': 25  # Set a limit for each page; 25 is the default
-    }
+def fetch_and_write_follower_insights(access_token):
+    metrics = ["engaged_audience_demographics", "follower_demographics"]
 
-    all_media_items = []
-    while media_url:
-        response = requests.get(media_url, params=media_params)
-        response.raise_for_status()
-        data = response.json()
-        all_media_items.extend(data.get('data', []))  # Add current page's items to the list
-
-        # If paginate is False, break after the first page
-        if not paginate:
-            break
-
-        # Get the next page URL from the response, if available
-        media_url = data.get('paging', {}).get('next')
-
-    return all_media_items
+    for metric in metrics:
+        print("Grabbing audience insight data")
+        demographics = fetch_follower_demographics(USER_ID, access_token, metric)
+        print(f"Writing {metric} data to csv")
+        write_demographics_to_csv(demographics, metric)
 
 
-def fetch_media_insights(media_id):
-    """Fetch insights for a specific media item."""
-    media_insights_url = f"https://graph.facebook.com/v20.0/{media_id}/insights"
-    media_params = {
-        'metric': 'reach,comments,likes,saved,shares,plays,total_interactions,ig_reels_video_view_total_time,'
-                  'ig_reels_avg_watch_time,ig_reels_aggregated_all_plays_count,clips_replays_count',
-        'access_token': ACCESS_TOKEN
-    }
-    response = requests.get(media_insights_url, params=media_params)
-    response.raise_for_status()
-    return response.json()['data']
-
-
-def aggregate_media_data(media_items):
-    """Aggregate media data and insights into a structured format."""
-    aggregated_data = {}
-    for item in media_items:
-        if item['media_type'] == 'VIDEO':
-            media_id = str(item['id'])
-            caption = item.get("caption", "").split('\n')[0]
-            hashtags = extract_hashtags(item.get("caption", ""))
-            timestamp = format_timestamp(item.get("timestamp"))
-            media_url = item.get("media_url")
-            thumbnail_url = item.get("thumbnail_url")
-            insights_data = fetch_media_insights(media_id)
-            aggregated_data[media_id] = create_media_entry(
-                caption, hashtags, timestamp, media_url, thumbnail_url, insights_data
-            )
-            calculate_pct_values(aggregated_data[media_id])
-    return aggregated_data
-
-
-def format_timestamp(timestamp):
-    """Convert timestamp to a more readable format."""
-    if timestamp:
-        dt = datetime.datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S%z")
-        return dt.strftime("%Y-%m-%d")
-    return None
-
-
-def extract_hashtags(caption):
-    """Extract hashtags from a caption."""
-    return ' '.join(re.findall(r'#\w+', caption))  # Find all hashtags and join them into a single string
-
-
-def create_media_entry(caption, hashtags, timestamp, media_url, thumbnail_url, insights_data):
-    """Create an entry for a media item with its caption and insights."""
-    entry = {metric: None for metric in METRICS}
-    entry["Caption"] = caption
-    entry["Timestamp"] = timestamp
-    entry["Media URL"] = media_url
-    entry["Thumbnail URL"] = thumbnail_url
-    entry["Hashtags"] = hashtags
-    for insight in insights_data:
-        title = insight.get("title", "")
-        value = insight.get("values")[0].get("value", 0)
-        if title in entry:
-            entry[title] = value
-    return entry
-
-
-def calculate_pct_values(entry):
-    """Calculate and format the PCT values for likes, comments, shares, and saves."""
-    total_plays = entry["Total Plays"] or 1  # Avoid division by zero
-    pct_metrics = {
-        "Like PCT": "Likes",
-        "Comment PCT": "Comments",
-        "Share PCT": "Shares",
-        "Save PCT": "Saved"
-    }
-
-    for pct_key, metric_key in pct_metrics.items():
-        entry[pct_key] = (entry[metric_key] or 0) / total_plays
-
-
-def generate_filename(csv=False):
-    """Generate a filename with today's date."""
-    today = datetime.datetime.now().strftime('%Y-%m-%d')
-    ext = "csv" if csv else "xlsx"
-    return os.path.expanduser(f'~/Documents/personalDev/reel_insights/insights_{today}.{ext}')
-
-
-def main():
+def fetch_and_write_reel_insights(access_token, paginate):
     print("Fetching media data")
-    media_items = fetch_media_data(ACCESS_TOKEN, USER_ID, paginate=True)
+
+    media_items = fetch_media_data(access_token, USER_ID, paginate)
     print(f"Fetched {len(media_items)} media items")
-
     print("Aggregating data")
-    aggregated_data = aggregate_media_data(media_items)
+    aggregated_data = aggregate_media_data(media_items, access_token)
     print(f"Aggregated {len(aggregated_data)} items")
-
     print("Writing to spreadsheet")
     file_path = generate_filename()
-
     write_to_excel(aggregated_data, file_path, include_images=True)
     print(f"Successfully wrote to spreadsheet at {file_path}")
 
 
-def main_args():
+def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Fetch Instagram media insights")
-    parser.add_argument("--access_token", type=str, required=True, help="Instagram Graph API access token")
+    parser.add_argument("--access_token", type=str, required=False, help="Instagram Graph API access token")
     parser.add_argument("--paginate", action="store_true", help="Paginate through all media items")
     parser.add_argument("--no_images", action="store_true", help="Exclude images in the Excel file")
 
     args = parser.parse_args()
-
-    print("Fetching media data")
-    paginate = args.paginate
-    media_items = fetch_media_data(args.access_token, USER_ID)
-    print(f"Fetched {len(media_items)} media items")
-
-    print("Aggregating data")
-    aggregated_data = aggregate_media_data(media_items)
-    print(f"Aggregated {len(aggregated_data)} items")
-
-    print("Writing to spreadsheet")
-    file_path = generate_filename()
+    paginate = args.paginate or False
+    access_token = args.access_token if args.access_token else ACCESS_TOKEN
     include_images = not args.no_images  # Include images unless --no_images is passed
-    write_to_excel(aggregated_data, file_path, include_images=include_images)
-    print(f"Successfully wrote to spreadsheet at {file_path}")
 
+    fetch_and_write_reel_insights(access_token, paginate)
+    fetch_and_write_follower_insights(access_token)
 
 if __name__ == '__main__':
     main()
